@@ -1,0 +1,11 @@
+## IDE
+.idea/
+
+## cahce
+.mypy_cache/
+.pytest_cache/
+__pycache__/
+
+
+## private environment
+.venv/

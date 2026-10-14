@@ -1,77 +1,103 @@
 # NotebookAI
 
-NotebookAI is a NotebookLM-inspired application that turns a user's sources into a notebook workspace for cited questions and answers, reports, and quizzes. Its goal is to make document-based learning and research easier while keeping answers traceable to the original evidence.
+A small NotebookLM-inspired workspace built with **Next.js**, **FastAPI**, and **PostgreSQL 18**. Create notebooks, add sources, select which sources to question, and follow citations back to their text.
 
-**Status:** initial repository scaffold and architecture planning. The features below are requirements and roadmap items, not implemented capabilities. The current component directories are `front-end/`, `back-end/`, and `ai/`; the target architecture uses `frontend/`, `backend/`, and `ai/`.
+## What works
 
-## Goals and required capabilities
+- Notebook library with search, creation, renaming, and deletion.
+- Three-panel notebook workspace: sources, questions, and source reader; responsive mobile layout.
+- Pasted text, UTF-8 `.txt`, text-based PDF, and PNG/JPEG/WEBP uploads.
+- Source selection, questions with quoted passages and page/paragraph citations, and persistent question history.
+- Images and scanned PDFs can be uploaded and manually transcribed before asking questions.
+- One seeded `admin` user; no sign-in or external AI credentials needed.
 
-| Requirement | Intended outcome / completion evidence |
-| --- | --- |
-| Multiple notebooks | Create and manage separate notebooks, each with its own sources, chat, and artifacts |
-| Source ingestion | Upload PDF, PPTX, and TXT files and ingest a single-page URL; expose processing status and useful errors |
-| Cited RAG answers | Ask questions across selected notebook sources; answers cite resolvable pages, slides, or text locations and acknowledge insufficient evidence |
-| Reports | Generate a source-grounded report and download the result |
-| Quizzes and answer keys | Generate quizzes with correct answer keys and explanations, with downloadable output |
-| Storage abstraction | Support local and S3-compatible object-storage adapters through one application interface |
-| Documentation and deployment | Provide architecture, setup/configuration, API, and deployment instructions with a reproducible deployed demo |
-| RAG comparison | Compare at least two configurations on a fixed evaluation set, reporting grounding, citations, retrieval quality, latency, and cost |
+**Answering is a local keyword-based passage search, not generative AI.** It returns relevant excerpts or states that it cannot find a match. Semantic retrieval, model-generated synthesis, OCR, authentication, reports, and quizzes remain future work. No paid AI calls are made.
 
-These requirements form the project's rubric-aligned delivery checklist. They are not a claim of a rubric score or completed implementation.
+## Run locally
 
-## Planned technology stack
+Requirements: Node.js 24+, Python 3.12+, Docker with Compose. Only PostgreSQL runs in Docker. The Next.js and FastAPI processes run on your host.
 
-| Area | Technology and responsibility |
-| --- | --- |
-| Frontend | Next.js and TypeScript: notebooks, sources, chat, citation navigation, artifact downloads |
-| Business backend | FastAPI and Python, packaged as `src/notebook_backend`: authorization, metadata, workflows, public API |
-| AI component | FastAPI and Python, packaged as `src/notebook_ai`: RAG ingestion/indexing/retrieval/evaluation, generation, LLM and embedding provider adapters |
-| Shared contracts | Pydantic DTOs in `packages/contracts`; OpenAPI-derived TypeScript types can support the frontend |
-| Application database | PostgreSQL, owned by the backend |
-| Vector database | Qdrant, owned by the AI component |
-| Object storage | Local filesystem for development and S3-compatible storage through an abstraction |
-| Infrastructure | Docker for containers/local services; Terraform for deployment provisioning |
+From the repository root:
 
-The model provider, authentication provider, durable queue, hosting platform, and export formats will be selected during implementation.
-
-## Architecture and repository layout
-
-```text
-notebookeai/
-├── frontend/          # Next.js + TypeScript (target name)
-├── backend/           # FastAPI; src/notebook_backend (target name)
-├── ai/                # FastAPI; src/notebook_ai
-├── packages/contracts/# Shared Pydantic DTOs
-├── infrastructure/    # Docker and Terraform
-├── docs/              # Design, setup, deployment, evaluation
-└── README.md
+```sh
+docker compose up -d --wait
 ```
 
-The frontend calls the backend, which owns access control and coordinates work with the internal AI API. The backend owns PostgreSQL metadata and object-storage lifecycle; AI owns the derived Qdrant index. Original sources and generated files live in object storage. Both Python services use shared transport contracts without sharing database models.
+PostgreSQL listens on **localhost:5433** (5432 is often occupied). PostgreSQL 18 data is persisted by mounting `/var/lib/postgresql`. To change the host port, set `POSTGRES_PORT` and update `DATABASE_URL` accordingly.
 
-See [the architecture plan](docs/architecture.md) for the detailed layout, service boundaries, data ownership, ingestion/chat/artifact flows, development and deployment approach, security, evaluation, and tradeoffs.
+Backend, in a terminal:
 
-## Development roadmap
+```sh
+cd backend
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.lock
+pip install --no-deps -e .
+cp .env.example .env
+alembic upgrade head
+uvicorn notebook_backend.main:app --reload --host 127.0.0.1 --port 8000
+```
 
-1. **Foundation:** adopt the canonical folder names, scaffold the Next.js and Python packages, define DTOs and configuration, and add local infrastructure and CI.
-2. **Notebooks and storage:** implement authentication/authorization, notebook/source metadata, migrations, and local/S3-compatible storage adapters.
-3. **Ingestion:** deliver PDF ingestion end to end with durable job status, then PPTX, TXT, and guarded single-page URL ingestion; preserve citation locations and source versions.
-4. **Grounded chat:** implement scoped indexing/retrieval, provider integration, cited answers, insufficient-evidence behavior, chat persistence, and isolation tests.
-5. **Artifacts:** generate reports and quizzes with answer keys, validate structured output, and provide authorized downloads.
-6. **Evaluation:** build a held-out dataset, compare RAG configurations, review citation/answer quality, and document measured results and limitations.
-7. **Deployment and handoff:** finish Docker/Terraform configuration, security and recovery checks, deployment/setup documentation, and an end-to-end demo against the requirements above.
+Frontend, in a second terminal:
 
-## Development setup
+```sh
+cd frontend
+npm ci
+cp .env.example .env.local
+npm run dev
+```
 
-There is no runnable application or dependency/container manifest yet. Setup commands will be added with the foundation milestone rather than presented as working today.
+Open [NotebookAI](http://localhost:3000). API documentation is at [FastAPI Swagger UI](http://localhost:8000/docs). Start a notebook, add a text source containing “Plants convert sunlight into energy through photosynthesis,” then ask “How does photosynthesis use sunlight?”
 
-The intended workflow is to install frontend dependencies, install the backend/AI/contracts Python packages in development environments, start PostgreSQL/Qdrant and object storage locally, apply database migrations, configure server-side provider credentials, and start all three application components. Exact runtime versions and commands will be pinned in the component manifests and setup documentation.
+The development password in Compose is local-only. No authentication is implemented: anyone who can reach the backend has access to the admin workspace. Keep these processes bound to localhost.
 
-Keep secrets out of Git. The existing ignore rules exclude `.idea/`, `.venv/`, and common Python caches; add secret environment-file exclusions and safe example configuration when scaffolding configuration files.
+Stop the database with `docker compose stop`; its named volume keeps notebooks and sources. Do not remove the volume unless you intend to erase data.
 
-## Validation and project documentation
+## Tests
 
-Completion requires a demonstrated flow from source ingestion through cited chat to downloadable reports/quizzes, plus notebook isolation, failure handling, and storage-adapter checks. RAG comparisons should use the same sources and held-out questions, record configuration/model versions, and report quality alongside latency and cost.
+Backend (from `backend/`, with the virtual environment active):
 
-- [Architecture plan](docs/architecture.md) — agreed design and implementation decisions.
-- Setup/API/deployment guides and a RAG comparison report — planned deliverables as implementation progresses.
+```sh
+ruff check .
+ruff format --check .
+pytest -q
+# PostgreSQL integration run after alembic upgrade head:
+TEST_DATABASE_URL=postgresql+psycopg://notebook:local_notebook_password@localhost:5433/notebook pytest -q
+alembic check
+```
+
+The PostgreSQL tests use transactions that roll back. The default test run uses isolated, in-memory SQLite databases. Both execute the same API behavior tests.
+
+Frontend (from `frontend/`):
+
+```sh
+npm run typecheck
+npm test
+npm run build
+npx playwright install chromium
+# Keep the backend running; Playwright starts the frontend when needed.
+npm run test:e2e
+```
+
+Browser tests run on desktop and mobile viewports against the real API. They create and clean up their own notebooks. GitHub Actions runs on pull requests and pushes to `main`/`master`, with PostgreSQL 18, migrations, backend tests, frontend checks/build, and browser tests.
+
+## Modules and documentation
+
+```text
+frontend/                 Next.js App Router, React, TypeScript
+backend/                  FastAPI MVC app, SQLAlchemy, Alembic, pytest
+compose.yaml              PostgreSQL 18 only
+docs/architecture.md      Current architecture and Mermaid ER diagram
+docs/frontend.md          UI structure and frontend/backend communication
+docs/backend.md           Models, controllers, views, API and persistence
+docs/progress.md          Implementation checkpoint and remaining work
+```
+
+- [Current architecture and entity diagram](docs/architecture.md)
+- [Frontend guide](docs/frontend.md)
+- [Backend guide](docs/backend.md)
+- [Planned vector indexing and chat context](docs/vector-indexing.md)
+- [Implementation checkpoint](docs/progress.md)
+- [Original long-term architecture](docs/roadmap-architecture.md), retained as a roadmap, not a description of the MVP.
+
+The original empty `front-end/`, `back-end/`, and `ai/` folders are unused; the implementation follows the previously planned canonical `frontend/` and `backend/` names.

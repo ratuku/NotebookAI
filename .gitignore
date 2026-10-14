@@ -9,3 +9,18 @@ __pycache__/
 
 ## private environment
 .venv/
+
+# Dependencies, build products, secrets, and test output
+node_modules/
+.next/
+.env
+.env.*
+!.env.example
+*.tsbuildinfo
+*.egg-info/
+.ruff_cache/
+coverage/
+htmlcov/
+playwright-report/
+test-results/
+*.db

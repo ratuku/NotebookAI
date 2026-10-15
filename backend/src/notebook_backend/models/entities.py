@@ -31,6 +31,7 @@ class Notebook(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
     owner: Mapped[User] = relationship(back_populates="notebooks")
     sources: Mapped[list["Source"]] = relationship(cascade="all, delete-orphan")
+    artifacts: Mapped[list["Artifact"]] = relationship(cascade="all, delete-orphan")
     questions: Mapped[list["Question"]] = relationship(cascade="all, delete-orphan")
 
 
@@ -67,5 +68,24 @@ class Question(Base):
     answer: Mapped[str] = mapped_column(Text)
     source_ids: Mapped[list] = mapped_column(JSON)
     citations: Mapped[list] = mapped_column(JSON)
+    retrieval_stats: Mapped[dict | None] = mapped_column(JSON)
+    retrieval_method: Mapped[str] = mapped_column(String(20), default="normal")
     mode: Mapped[str] = mapped_column(String(30), default="extractive")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)
+
+
+class Artifact(Base):
+    __tablename__ = "artifacts"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_id)
+    notebook_id: Mapped[str] = mapped_column(
+        ForeignKey("notebooks.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    title: Mapped[str] = mapped_column(String(160))
+    topic: Mapped[str] = mapped_column(Text)
+    retrieval_stats: Mapped[dict | None] = mapped_column(JSON)
+    retrieval_method: Mapped[str] = mapped_column(String(20))
+    source_ids: Mapped[list] = mapped_column(JSON)
+    content: Mapped[dict] = mapped_column(JSON)
+    citations: Mapped[list] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=now)

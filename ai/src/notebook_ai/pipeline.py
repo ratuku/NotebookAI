@@ -1,5 +1,6 @@
 import hashlib
 from threading import RLock
+from time import perf_counter
 from uuid import NAMESPACE_URL, uuid5
 
 from qdrant_client import QdrantClient
@@ -116,10 +117,29 @@ class RagPipeline:
                     self.collection, m.FilterSelector(filter=m.Filter(must=conditions)), wait=True
                 )
 
-    def retrieve(self, question: str, user_id: str, notebook_id: str, versions: dict[str, str]):
+    def retrieve(
+        self,
+        question: str,
+        user_id: str,
+        notebook_id: str,
+        versions: dict[str, str],
+        retrieval_method: str = "normal",
+        metrics: dict | None = None,
+    ):
+        if retrieval_method not in {"normal", "reranking"}:
+            raise AIError("Unknown retrieval method.")
+        stats = metrics if metrics is not None else {}
+        stats.update(
+            chunks_found=0,
+            candidates_count=0,
+            chunks_selected=0,
+            retrieval_ms=0.0,
+            reranking_ms=0.0,
+        )
         if not versions:
             return []
         with self.lock:
+            started = perf_counter()
             if not self.client.collection_exists(self.collection):
                 raise AIError("Vector index is missing. Reindex the selected sources.")
             scope = self.scope(user_id, notebook_id, versions)
@@ -155,10 +175,33 @@ class RagPipeline:
             )
             lexical_ids = [str(r.id) for r, score in ranked if score > 0][:30]
             records = {str(r.id): r for r in all_records}
-            return fuse_and_diversify([str(r.id) for r in dense], lexical_ids, records, self.top_k)
+            stats["chunks_found"] = len({str(r.id) for r in dense} | set(lexical_ids))
+            candidates = fuse_and_diversify([str(r.id) for r in dense], lexical_ids, records, 30)
+            stats["candidates_count"] = len(candidates)
+            if retrieval_method == "reranking" and candidates:
+                rerank_started = perf_counter()
+                evidence = [{"id": str(r.id), "text": r.payload["text"]} for r in candidates]
+                ranked_ids = self.provider.rerank(question, evidence)
+                candidate_ids = {str(r.id) for r in candidates}
+                if len(ranked_ids) != len(candidate_ids) or set(ranked_ids) != candidate_ids:
+                    raise AIError("Reranking returned invalid passage IDs. Please retry.")
+                candidates = [records[key] for key in ranked_ids]
+                stats["reranking_ms"] = round((perf_counter() - rerank_started) * 1000, 3)
+            selected = candidates[: self.top_k]
+            stats["chunks_selected"] = len(selected)
+            stats["retrieval_ms"] = round((perf_counter() - started) * 1000, 3)
+            return selected
 
-    def answer(self, question: str, user_id: str, notebook_id: str, versions: dict[str, str]):
-        matches = self.retrieve(question, user_id, notebook_id, versions)
+    def answer(
+        self,
+        question: str,
+        user_id: str,
+        notebook_id: str,
+        versions: dict[str, str],
+        retrieval_method: str = "normal",
+        metrics: dict | None = None,
+    ):
+        matches = self.retrieve(question, user_id, notebook_id, versions, retrieval_method, metrics)
         if not matches:
             return ABSTAIN, []
         evidence = [

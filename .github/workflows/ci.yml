@@ -86,3 +86,26 @@ jobs:
           name: browser-test-results
           path: frontend/test-results/
           retention-days: 7
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_PASSWORD: ci_container_password
+      AI_MODE: extractive
+      APP_PORT: '8080'
+      POSTGRES_DATA_PATH: ./data/ci/postgres18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and start deployment stack
+        run: docker compose -f compose.deploy.yaml up --build -d --wait --wait-timeout 180
+      - name: Verify deployment through the gateway
+        run: python3 deploy/smoke.py
+      - name: Check migrated container schema
+        run: docker compose -f compose.deploy.yaml exec -T backend alembic check
+      - name: Container logs
+        if: failure()
+        run: docker compose -f compose.deploy.yaml logs --no-color
+      - name: Stop containers
+        if: always()
+        run: docker compose -f compose.deploy.yaml down

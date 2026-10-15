@@ -1,4 +1,5 @@
 "use client";
+import { RetrievalSummary } from "./retrieval-summary";
 import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { Brand, Avatar } from "./brand";
 import { Dialog } from "./dialog";
+import { Artifacts } from "./artifacts";
 import { AddSource } from "./add-source";
 import {
   request,
@@ -30,6 +32,7 @@ import {
   type Source,
   type SourceDetail,
   type Question,
+  type RetrievalMethod,
 } from "@/lib/api";
 
 export function Workspace({ id }: { id: string }) {
@@ -45,6 +48,9 @@ export function Workspace({ id }: { id: string }) {
   const [reader, setReader] = useState<SourceDetail | null>(null);
   const [reading, setReading] = useState(false);
   const [question, setQuestion] = useState("");
+  const [retrievalMethod, setRetrievalMethod] =
+    useState<RetrievalMethod>("normal");
+  const [studio, setStudio] = useState(false);
   const [asking, setAsking] = useState(false);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState("");
@@ -103,7 +109,11 @@ export function Workspace({ id }: { id: string }) {
     try {
       const q = await request<Question>(`${path}/questions`, {
         method: "POST",
-        body: JSON.stringify({ question, source_ids: selected }),
+        body: JSON.stringify({
+          question,
+          source_ids: selected,
+          retrieval_method: retrievalMethod,
+        }),
       });
       setQuestions((qs) => [...qs, q]);
       setQuestion("");
@@ -256,6 +266,9 @@ export function Workspace({ id }: { id: string }) {
           </button>
         </div>
         <div className="account">
+          <button className="secondary" onClick={() => setStudio(true)}>
+            Reports & quizzes
+          </button>
           <Link className="header-link" href="/">
             <Plus size={20} /> Notebooks
           </Link>
@@ -439,10 +452,14 @@ export function Workspace({ id }: { id: string }) {
                   </span>{" "}
                   NotebookAI{" "}
                   <span>
-                    · {q.mode === "rag" ? "AI answer" : "Cited passages"}
+                    · {q.mode === "rag" ? "AI answer" : "Cited passages"} ·{" "}
+                    {q.retrieval_method === "reranking"
+                      ? "Reranking"
+                      : "Normal"}
                   </span>
                 </div>
                 <p className="answer-text">{q.answer}</p>
+                <RetrievalSummary stats={q.retrieval_stats} />
                 <div className="citations">
                   {q.citations.map((c, index) => (
                     <button
@@ -468,6 +485,19 @@ export function Workspace({ id }: { id: string }) {
             <div ref={bottom} />
           </div>
           <div className="composer-wrap">
+            <label className="retrieval-picker">
+              Retrieval method
+              <select
+                value={retrievalMethod}
+                disabled={asking}
+                onChange={(e) =>
+                  setRetrievalMethod(e.target.value as RetrievalMethod)
+                }
+              >
+                <option value="normal">Normal — hybrid search</option>
+                <option value="reranking">Reranking — relevance review</option>
+              </select>
+            </label>
             <form className="composer" onSubmit={ask}>
               <textarea
                 aria-label="Ask a question"
@@ -604,6 +634,15 @@ export function Workspace({ id }: { id: string }) {
           )}
         </aside>
       </main>
+      {studio && (
+        <Dialog title="Reports & quizzes" onClose={() => setStudio(false)}>
+          <Artifacts
+            notebookId={id}
+            sourceIds={selected}
+            method={retrievalMethod}
+          />
+        </Dialog>
+      )}
       {adding && (
         <AddSource
           notebookId={id}

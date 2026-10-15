@@ -11,7 +11,17 @@ A small NotebookLM-inspired workspace built with **Next.js**, **FastAPI**, and *
 - Images and scanned PDFs can be uploaded and manually transcribed before asking questions.
 - One seeded `admin` user; no sign-in; Groq credentials power generated answers.
 
-**RAG uses local FastEmbed embeddings, Qdrant, hybrid semantic/BM25 retrieval, reciprocal rank fusion, and diversity selection.** Groq generates cited answers with `openai/gpt-oss-20b` by default. OCR, authentication, reports, and quizzes remain future work.
+**RAG uses local FastEmbed embeddings, Qdrant, hybrid semantic/BM25 retrieval, reciprocal rank fusion, and diversity selection.** Groq generates cited answers with `openai/gpt-oss-20b` by default. Reports and quizzes with answer keys can be saved and downloaded. OCR and authentication remain future work.
+
+## Run in containers
+
+See [deployment setup](docs/deployment.md). Copy `.env.deploy.example` to `.env.deploy`, set the PostgreSQL password and Groq key, then run:
+
+```sh
+docker compose --env-file .env.deploy -f compose.deploy.yaml up --build -d --wait
+```
+
+Open `http://localhost:8080`. Public hosting requires HTTPS and access control for the shared admin workspace.
 
 ## Run locally
 
@@ -52,7 +62,7 @@ Open [NotebookAI](http://localhost:3000). API documentation is at [FastAPI Swagg
 
 The development password in Compose is local-only. No authentication is implemented: anyone who can reach the backend has access to the admin workspace. Keep these processes bound to localhost.
 
-Stop the database with `docker compose stop`; its named volume keeps notebooks and sources. Do not remove the volume unless you intend to erase data.
+Stop the database with `docker compose stop`; its configured host data directory keeps notebooks and sources. Existing named volumes are not automatically moved; see the deployment guide before changing an existing database mount.
 
 ## Tests
 
@@ -97,6 +107,8 @@ docs/progress.md          Implementation checkpoint and remaining work
 ```
 
 - [Current architecture and entity diagram](docs/architecture.md)
+- [Reports, quizzes and retrieval comparison](docs/artifacts-and-retrieval.md)
+- [Container deployment](docs/deployment.md)
 - [Frontend guide](docs/frontend.md)
 - [Backend guide](docs/backend.md)
 - [Implemented RAG pipeline and ingestion API](docs/vector-indexing.md)

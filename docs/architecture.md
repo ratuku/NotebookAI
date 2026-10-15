@@ -23,6 +23,7 @@ erDiagram
     USER ||--o{ NOTEBOOK : owns
     NOTEBOOK ||--o{ SOURCE : contains
     NOTEBOOK ||--o{ QUESTION : records
+    NOTEBOOK ||--o{ ARTIFACT : generates
 
     USER {
         varchar id PK "UUID string"
@@ -53,6 +54,19 @@ erDiagram
         bytea original "nullable original file"
         timestamptz created_at
     }
+    ARTIFACT {
+        varchar id PK
+        varchar notebook_id FK
+        varchar kind "report or quiz"
+        varchar title
+        text topic
+        varchar retrieval_method
+        json retrieval_stats "nullable historical metrics"
+        json source_ids
+        json content
+        json citations
+        timestamptz created_at
+    }
     QUESTION {
         varchar id PK
         varchar notebook_id FK
@@ -61,6 +75,8 @@ erDiagram
         json source_ids "selected source ID snapshot"
         json citations "quoted evidence snapshot"
         varchar mode "rag or extractive"
+        varchar retrieval_method "normal or reranking"
+        json retrieval_stats "nullable historical metrics"
         timestamptz created_at
     }
 ```
@@ -91,4 +107,4 @@ The frontend communicates directly with the backend over HTTP. The browser never
 
 PostgreSQL is authoritative; Qdrant is a rebuildable derived index. Uploads commit source data and then index synchronously. Source versions and notebook row locks protect index publication. Failed indexing remains visible and retryable. Local Qdrant requires one backend process; a remote Qdrant URL is optional. No separate AI service or application container is needed.
 
-No authentication, OCR, background queue, generated reports, or quizzes are implemented. Parsers have file/page/text bounds but are not isolated workers. Larger workloads need background jobs, object storage and scalable lexical indexing. See [the implemented AI pipeline](vector-indexing.md) for configuration, API and limitations.
+No authentication, OCR or background queue is implemented. Reports and quizzes are saved as structured artifacts with citation snapshots; see [artifacts and retrieval](artifacts-and-retrieval.md). The optional [deployment stack](deployment.md) containerizes the application. Parsers have file/page/text bounds but are not isolated workers. Larger workloads need background jobs, object storage and scalable lexical indexing. See [the implemented AI pipeline](vector-indexing.md) for configuration, API and limitations.

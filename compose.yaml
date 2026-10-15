@@ -8,11 +8,9 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
-      - notebook_postgres:/var/lib/postgresql
+      - ${POSTGRES_DATA_PATH:-./data/postgres18}:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U notebook -d notebook"]
       interval: 3s
       timeout: 3s
       retries: 20
-volumes:
-  notebook_postgres:

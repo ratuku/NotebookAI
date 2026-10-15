@@ -234,6 +234,7 @@ def ask_question(notebook_id: str, payload: QuestionInput, db: DB):
             422, "Add a text transcription to these sources before asking questions."
         )
     mode = "extractive"
+    retrieval_stats = None
     if settings.ai_mode == "rag":
         lock_notebook(db, notebook_id)
         for source in sources:
@@ -248,16 +249,21 @@ def ask_question(notebook_id: str, payload: QuestionInput, db: DB):
                 raise HTTPException(
                     409, "Some sources are not indexed. Retry ingestion before asking."
                 )
+            retrieval_stats = {}
             answer, citations = pipeline.answer(
                 payload.question,
                 admin_id(db),
                 notebook_id,
                 {s.id: s.index_version for s in sources},
+                payload.retrieval_method,
+                metrics=retrieval_stats,
             )
             mode = "rag"
         except AIError as exc:
             raise HTTPException(503, str(exc)) from exc
     else:
+        if payload.retrieval_method != "normal":
+            raise HTTPException(422, "Reranking requires RAG mode.")
         answer, citations = answer_question(payload.question, sources)
     question = Question(
         notebook_id=notebook_id,
@@ -266,6 +272,8 @@ def ask_question(notebook_id: str, payload: QuestionInput, db: DB):
         answer=answer,
         citations=citations,
         mode=mode,
+        retrieval_method=payload.retrieval_method,
+        retrieval_stats=retrieval_stats,
     )
     db.add(question)
     db.commit()

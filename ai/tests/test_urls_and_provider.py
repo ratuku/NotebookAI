@@ -151,3 +151,27 @@ def test_missing_key_and_rate_limit_are_explicit(monkeypatch):
     )
     with pytest.raises(AIError, match="HTTP 429"):
         GroqProvider("test-only").generate("question", [])
+
+
+def test_groq_reranker_orders_scores_and_rejects_duplicate_ids(monkeypatch):
+    from notebook_ai.providers import RankingDraft
+
+    provider = GroqProvider("test-only")
+    monkeypatch.setattr(
+        provider,
+        "structured",
+        lambda *args: RankingDraft.model_validate(
+            {"scores": [{"id": "a", "score": 10}, {"id": "b", "score": 90}]}
+        ),
+    )
+    evidence = [{"id": "a", "text": "Distractor"}, {"id": "b", "text": "Answer"}]
+    assert provider.rerank("question", evidence) == ["b", "a"]
+    monkeypatch.setattr(
+        provider,
+        "structured",
+        lambda *args: RankingDraft.model_validate(
+            {"scores": [{"id": "a", "score": 10}, {"id": "a", "score": 90}]}
+        ),
+    )
+    with pytest.raises(AIError, match="invalid passage IDs"):
+        provider.rerank("question", evidence)

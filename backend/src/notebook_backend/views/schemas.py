@@ -61,7 +61,11 @@ class SourceDetail(SourceView):
     segments: list[dict]
 
 
+RetrievalMethod = Literal["normal", "reranking"]
+
+
 class QuestionInput(BaseModel):
+    retrieval_method: RetrievalMethod = "normal"
     question: Annotated[
         str,
         StringConstraints(
@@ -81,6 +85,14 @@ class Citation(BaseModel):
     url: str | None = None
 
 
+class RetrievalStats(BaseModel):
+    chunks_found: int = Field(ge=0)
+    candidates_count: int = Field(ge=0)
+    chunks_selected: int = Field(ge=0)
+    retrieval_ms: float = Field(ge=0)
+    reranking_ms: float = Field(ge=0)
+
+
 class QuestionView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
@@ -89,4 +101,29 @@ class QuestionView(BaseModel):
     source_ids: list[str]
     citations: list[Citation]
     mode: str
+    retrieval_method: str
+    retrieval_stats: RetrievalStats | None = None
+    created_at: datetime
+
+
+class ArtifactInput(BaseModel):
+    kind: Literal["report", "quiz"]
+    topic: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
+    source_ids: list[str] = Field(min_length=1, max_length=100)
+    retrieval_method: RetrievalMethod = "normal"
+    question_count: int = Field(default=5, ge=3, le=10)
+
+
+class ArtifactView(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    notebook_id: str
+    kind: str
+    title: str
+    topic: str
+    retrieval_method: str
+    retrieval_stats: RetrievalStats | None = None
+    source_ids: list[str]
+    content: dict
+    citations: list[Citation]
     created_at: datetime

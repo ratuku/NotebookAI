@@ -1,6 +1,7 @@
 from io import BytesIO
 
 import pytest
+from notebook_ai.artifacts import ReportDraft
 from notebook_ai.pipeline import RagPipeline
 from notebook_ai.providers import AIError, AnswerDraft, Claim
 from pptx import Presentation
@@ -143,3 +144,114 @@ def test_ingestion_endpoint_rejects_other_notebooks(client, notebook, rag):
         ).status_code
         == 404
     )
+
+
+def artifact_provider(monkeypatch, rag, invalid=False):
+    def structured(system, payload, schema):
+        key = "invented" if invalid else payload["evidence"][0]["id"]
+        claim = {"text": "Plants use sunlight.", "citations": [key]}
+        if schema.__name__ == "ReportDraft":
+            return schema.model_validate(
+                {
+                    "title": "Plant report",
+                    "insufficient_evidence": False,
+                    "sections": [{"heading": "Energy", "claims": [claim]}],
+                }
+            )
+        return schema.model_validate(
+            {
+                "title": "Plant quiz",
+                "insufficient_evidence": False,
+                "questions": [
+                    {"question": f"Question {i}: what do plants use?", "answer": claim}
+                    for i in range(3)
+                ],
+            }
+        )
+
+    monkeypatch.setattr(rag.provider, "structured", structured, raising=False)
+    monkeypatch.setattr(
+        rag.provider, "rerank", lambda q, e: [item["id"] for item in reversed(e)], raising=False
+    )
+
+
+def test_retrieval_selection_is_validated_and_saved(client, notebook, rag, monkeypatch):
+    artifact_provider(monkeypatch, rag)
+    base = f"/api/v1/notebooks/{notebook}"
+    source = client.post(
+        base + "/sources/text", json={"title": "Plant", "text": "Plants use sunlight."}
+    ).json()
+    body = {"question": "plants", "source_ids": [source["id"]], "retrieval_method": "reranking"}
+    response = client.post(base + "/questions", json=body)
+    assert response.status_code == 201
+    assert response.json()["retrieval_method"] == "reranking"
+    stats = response.json()["retrieval_stats"]
+    assert stats["chunks_found"] == 1 and stats["chunks_selected"] == 1
+    assert stats["retrieval_ms"] >= stats["reranking_ms"] >= 0
+    assert client.get(base + "/questions").json()[0]["retrieval_stats"] == stats
+    assert client.get(base + "/questions").json()[0]["retrieval_method"] == "reranking"
+    body["retrieval_method"] = "invalid"
+    assert client.post(base + "/questions", json=body).status_code == 422
+
+
+@pytest.mark.parametrize("kind", ["report", "quiz"])
+def test_artifact_generation_download_history_and_scope(client, notebook, rag, monkeypatch, kind):
+    artifact_provider(monkeypatch, rag)
+    base = f"/api/v1/notebooks/{notebook}"
+    source = client.post(
+        base + "/sources/text",
+        json={"title": "<script>bad()</script>", "text": "Plants use sunlight."},
+    ).json()
+    payload = {
+        "kind": kind,
+        "topic": "Plants",
+        "question_count": 3,
+        "source_ids": [source["id"]],
+        "retrieval_method": "reranking",
+    }
+    response = client.post(base + "/artifacts", json=payload)
+    assert response.status_code == 201, response.text
+    artifact = response.json()
+    assert artifact["citations"][0]["source_id"] == source["id"]
+    assert artifact["retrieval_stats"]["chunks_selected"] == 1
+    assert client.get(base + "/artifacts").json()[0]["id"] == artifact["id"]
+    download = base + f"/artifacts/{artifact['id']}/download"
+    markdown = client.get(download)
+    assert markdown.status_code == 200 and "attachment" in markdown.headers["content-disposition"]
+    assert "Sources and evidence" in markdown.text
+    html = client.get(download + "?format=html").text
+    assert "<script>" not in html and "&lt;script&gt;" in html
+    if kind == "quiz":
+        assert "Answer key" in html and html.index("Questions") < html.index("Answer key")
+        assert len(artifact["content"]["questions"]) == 3
+    other = client.post("/api/v1/notebooks", json={"title": "Other"}).json()["id"]
+    assert (
+        client.get(f"/api/v1/notebooks/{other}/artifacts/{artifact['id']}/download").status_code
+        == 404
+    )
+    assert client.post(f"/api/v1/notebooks/{other}/artifacts", json=payload).status_code == 404
+    # Source deletion retains downloadable historical citation snapshots.
+    client.delete(base + f"/sources/{source['id']}")
+    assert client.get(download).status_code == 200
+    client.delete(base)
+    assert client.get(download).status_code == 404
+
+
+def test_invalid_artifacts_never_persist(client, notebook, rag, monkeypatch):
+    artifact_provider(monkeypatch, rag, invalid=True)
+    base = f"/api/v1/notebooks/{notebook}"
+    source = client.post(
+        base + "/sources/text", json={"title": "Plants", "text": "Plants use sunlight."}
+    ).json()
+    payload = {"kind": "report", "topic": "Plants", "source_ids": [source["id"]]}
+    assert client.post(base + "/artifacts", json=payload).status_code == 503
+    assert client.get(base + "/artifacts").json() == []
+    artifact_provider(monkeypatch, rag)
+    payload.update(kind="quiz", question_count=5)  # Provider returns only three.
+    assert client.post(base + "/artifacts", json=payload).status_code == 503
+    rag.provider.structured = lambda *args: ReportDraft(
+        title="No evidence", insufficient_evidence=True, sections=[]
+    )
+    payload["kind"] = "report"
+    assert client.post(base + "/artifacts", json=payload).status_code == 503
+    assert client.get(base + "/artifacts").json() == []

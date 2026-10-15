@@ -12,7 +12,7 @@ Build a basic Next.js + FastAPI MVC NotebookAI clone, single admin user, noteboo
 - PDF/text extraction, image/scanned-PDF manual transcription.
 - Credential-free cited passage retrieval and persisted question history.
 - SQLAlchemy entities and Alembic initial migration with admin seed.
-- PostgreSQL 18 Compose setup (port 5433, persistent named volume).
+- PostgreSQL 18 Compose setup (port 5433, configurable persistent host directory).
 - Backend API tests, frontend component/client tests, desktop/mobile end-to-end tests.
 - Pull-request workflow, ER diagram, frontend/backend/setup docs.
 
@@ -33,3 +33,9 @@ Continue from the current files and this checkpoint. Inspect `git status`, read 
 ## RAG milestone (supersedes earlier AI roadmap status)
 
 Implemented `ai/` package with PDF/PPTX/TXT/URL extraction, local FastEmbed, persistent Qdrant, scoped hybrid BM25/dense retrieval, RRF and diversity selection, and Groq structured grounded answers (`openai/gpt-oss-20b`). Added upload-time ingestion, full PostgreSQL rebuild and individual retry endpoints, indexing migration and UI states. See `vector-indexing.md` for setup and limitations. AI/backend tests and CI require no provider credentials. Live Groq generation needs the user's key. Background jobs, OCR, conversational context and large-scale retrieval remain future work.
+
+## Deployment, artifacts and retrieval comparison
+
+Added container images and a same-origin deployment stack with PostgreSQL 18 and startup migrations. Implemented saved reports and short-answer quizzes with answer keys, citation validation, and Markdown/printable HTML downloads. Added `normal` hybrid retrieval versus Groq relevance reranking, selectable through the API/UI and saved in question history. See `deployment.md` and `artifacts-and-retrieval.md`.
+
+Retrieval results now persist matched chunk counts, candidate/selected counts, retrieval duration and reranking duration, displayed in the UI. PostgreSQL uses `POSTGRES_DATA_PATH` for per-app bind mounts. Verified 49 backend/AI tests (including PostgreSQL), 11 frontend tests, two container-backed browser tests, image builds, deployment smoke and schema checks. Live Groq calls require a configured key and were not exercised in this verification.

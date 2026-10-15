@@ -23,10 +23,18 @@ export type SourceDetail = Source & {
   segments: { location: string; text: string }[];
 };
 export type Citation = {
+  chunk_id?: string;
   source_id: string;
   source_title: string;
   location: string;
   excerpt: string;
+};
+export type RetrievalStats = {
+  chunks_found: number;
+  candidates_count: number;
+  chunks_selected: number;
+  retrieval_ms: number;
+  reranking_ms: number;
 };
 export type Question = {
   id: string;
@@ -35,10 +43,12 @@ export type Question = {
   source_ids: string[];
   citations: Citation[];
   mode: string;
+  retrieval_method: "normal" | "reranking";
+  retrieval_stats?: RetrievalStats | null;
   created_at: string;
 };
 export const API_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
 
 export async function request<T>(
   path: string,
@@ -87,3 +97,31 @@ export function isSourceReady(source: Source) {
     ["ready", "disabled"].includes(source.index_status)
   );
 }
+
+export type RetrievalMethod = "normal" | "reranking";
+export type Artifact = {
+  id: string;
+  title: string;
+  kind: "report" | "quiz";
+  topic: string;
+  retrieval_method: RetrievalMethod;
+  retrieval_stats?: RetrievalStats | null;
+  created_at: string;
+  citations: Citation[];
+  content: {
+    sections?: {
+      heading: string;
+      claims: { text: string; citations: string[] }[];
+    }[];
+    questions?: {
+      question: string;
+      answer: { text: string; citations: string[] };
+    }[];
+  };
+};
+export const artifactDownloadUrl = (
+  notebookId: string,
+  artifactId: string,
+  format: "markdown" | "html",
+) =>
+  `${API_URL}/api/v1${notebookPath(notebookId)}/artifacts/${encodeURIComponent(artifactId)}/download?format=${format}`;

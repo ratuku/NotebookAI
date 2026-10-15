@@ -1266,3 +1266,76 @@ input[type="checkbox"]:disabled {
     transition: none !important;
   }
 }
+
+/* Retrieval comparison and downloadable study artifacts. */
+.retrieval-picker {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+.retrieval-picker select,
+.artifact-studio select {
+  padding: 9px;
+  border: 1px solid #d4d7de;
+  border-radius: 10px;
+  background: white;
+  color: #20232b;
+}
+.artifact-studio form {
+  display: grid;
+  gap: 16px;
+  margin: 20px 0;
+}
+.artifact-studio label {
+  display: grid;
+  gap: 6px;
+}
+.artifact-list {
+  display: grid;
+  gap: 8px;
+}
+.artifact-list button {
+  text-align: left;
+  white-space: normal;
+}
+.artifact-preview {
+  border-top: 1px solid #ddd;
+  margin-top: 24px;
+  padding-top: 16px;
+}
+.artifact-preview h3 {
+  margin-top: 24px;
+}
+.artifact-preview p,
+.artifact-preview li {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.65;
+}
+.artifact-preview li {
+  margin-bottom: 12px;
+}
+.artifact-preview details {
+  margin: 12px 0;
+}
+.artifact-preview summary {
+  cursor: pointer;
+}
+.artifact-downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0;
+}
+.retrieval-summary {
+  margin: 12px 0;
+  font-size: 12px;
+  color: #606570;
+  line-height: 1.6;
+}
+.retrieval-summary summary {
+  cursor: pointer;
+}

@@ -88,3 +88,5 @@ RAG is now the default; the preceding lexical behavior is available only with `A
 GitHub Actions migrates PostgreSQL 18 before testing and checks for schema drift. No provider calls or credentials are needed in CI.
 
 PPTX uploads extract slide text and tables, preserving slide locations. `POST /api/v1/notebooks/{id}/sources/url` accepts `{"url":"https://example.com/page"}` and saves a single-page snapshot. Upload, pasted text, URL, and transcription endpoints index synchronously in RAG mode. Inspect `index_status`, `index_error`, and `chunk_count` in the source response; successful source persistence does not imply successful indexing.
+
+See [artifacts and retrieval comparison](artifacts-and-retrieval.md) for saved reports/quizzes, download endpoints and the `retrieval_method` selector. See [deployment](deployment.md) for the production container stack.

@@ -162,3 +162,53 @@ def test_partial_vector_write_retry_preserves_old_version(pipeline, monkeypatch)
     assert pipeline.client.count(pipeline.collection).count == 70
     assert pipeline.retrieve("plants", "u1", "n1", {"s1": old_version}) == []
     assert pipeline.retrieve("plants", "u1", "n1", {"s1": new_version})
+
+
+def test_reranking_changes_order_using_same_scoped_candidates(pipeline, monkeypatch):
+    versions = {
+        f"s{i}": pipeline.index(source(f"s{i}", text=f"Plants use solar energy. Study {i}."))[0]
+        for i in range(5)
+    }
+    normal = pipeline.retrieve("plants", "u1", "n1", versions)
+    captured = []
+
+    def rerank(question, evidence):
+        captured.extend(evidence)
+        return [item["id"] for item in reversed(evidence)]
+
+    monkeypatch.setattr(pipeline.provider, "rerank", rerank, raising=False)
+    advanced = pipeline.retrieve("plants", "u1", "n1", versions, "reranking")
+    assert len(captured) == 5
+    assert [str(r.id) for r in advanced] == [e["id"] for e in reversed(captured)][:3]
+    assert [str(r.id) for r in normal] == [e["id"] for e in captured][:3]
+    monkeypatch.setattr(pipeline.provider, "rerank", lambda *args: ["foreign"])
+    with pytest.raises(AIError, match="invalid passage IDs"):
+        pipeline.retrieve("plants", "u1", "n1", versions, "reranking")
+
+
+def test_retrieval_metrics_counts_timing_and_no_generation_time(pipeline, monkeypatch):
+    from notebook_ai import pipeline as module
+
+    versions = {
+        f"s{i}": pipeline.index(source(f"s{i}", text=f"Plants use solar energy. Observation {i}."))[
+            0
+        ]
+        for i in range(5)
+    }
+    ticks = iter([1.0, 1.25, 1.75, 2.0])
+    monkeypatch.setattr(module, "perf_counter", lambda: next(ticks))
+    monkeypatch.setattr(
+        pipeline.provider, "rerank", lambda q, e: [x["id"] for x in reversed(e)], raising=False
+    )
+    stats = {}
+    pipeline.answer("plants", "u1", "n1", versions, "reranking", metrics=stats)
+    assert stats == {
+        "chunks_found": 5,
+        "candidates_count": 5,
+        "chunks_selected": 3,
+        "retrieval_ms": 1000.0,
+        "reranking_ms": 500.0,
+    }
+    empty = {}
+    assert pipeline.retrieve("plants", "u1", "n1", {}, metrics=empty) == []
+    assert empty["chunks_found"] == 0 and empty["chunks_selected"] == 0

@@ -22,6 +22,7 @@ import { Dialog } from "./dialog";
 import { AddSource } from "./add-source";
 import {
   request,
+  isSourceReady,
   notebookPath,
   sourceFileUrl,
   message,
@@ -65,7 +66,7 @@ export function Workspace({ id }: { id: string }) {
       setTitle(n.title);
       setSources(s);
       setQuestions(q);
-      setSelected(s.filter((s) => s.status === "ready").map((s) => s.id));
+      setSelected(s.filter((s) => isSourceReady(s)).map((s) => s.id));
     } catch (e) {
       setError(message(e));
     } finally {
@@ -174,14 +175,40 @@ export function Workspace({ id }: { id: string }) {
       );
       setReader(updated);
       setSources((ss) => ss.map((s) => (s.id === updated.id ? updated : s)));
-      setSelected((ids) => [...new Set([...ids, updated.id])]);
+      setSelected((ids) =>
+        isSourceReady(updated)
+          ? [...new Set([...ids, updated.id])]
+          : ids.filter((id) => id !== updated.id),
+      );
     } catch (e) {
       setError(message(e));
     } finally {
       setBusy(false);
     }
   }
-  const ready = sources.filter((s) => s.status === "ready");
+  async function retryIngestion() {
+    if (!reader) return;
+    setBusy(true);
+    setError("");
+    try {
+      const source = await request<Source>(
+        `${path}/sources/${reader.id}/ingest`,
+        {
+          method: "POST",
+          body: JSON.stringify({ force: false, reextract: false }),
+        },
+      );
+      setSources((ss) => ss.map((s) => (s.id === source.id ? source : s)));
+      setReader((current) => (current ? { ...current, ...source } : null));
+      if (isSourceReady(source))
+        setSelected((ids) => [...new Set([...ids, source.id])]);
+    } catch (e) {
+      setError(message(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  const ready = sources.filter((s) => isSourceReady(s));
   if (loading || !notebook)
     return (
       <>
@@ -288,7 +315,7 @@ export function Workspace({ id }: { id: string }) {
                   <input
                     type="checkbox"
                     aria-label={`Select ${source.title}`}
-                    disabled={source.status !== "ready"}
+                    disabled={!isSourceReady(source)}
                     checked={selected.includes(source.id)}
                     onChange={(e) =>
                       setSelected((ids) =>
@@ -312,7 +339,11 @@ export function Workspace({ id }: { id: string }) {
                       <small>
                         {source.status === "needs_text"
                           ? "Needs transcription"
-                          : source.kind.toUpperCase()}
+                          : source.index_status === "failed"
+                            ? "Indexing failed · open to retry"
+                            : source.index_status === "pending"
+                              ? "Needs indexing"
+                              : source.kind.toUpperCase()}
                       </small>
                     </span>
                   </button>
@@ -349,7 +380,7 @@ export function Workspace({ id }: { id: string }) {
             <h2>
               <MessageSquare size={17} /> Chat
             </h2>
-            <span className="mode-tag">Cited passages</span>
+            <span className="mode-tag">Source-grounded chat</span>
           </div>
           <div className="chat-scroll" aria-live="polite">
             {!questions.length && (
@@ -406,7 +437,10 @@ export function Workspace({ id }: { id: string }) {
                   <span className="mini-mark">
                     <Sparkles size={14} />
                   </span>{" "}
-                  NotebookAI <span>· Cited passages</span>
+                  NotebookAI{" "}
+                  <span>
+                    · {q.mode === "rag" ? "AI answer" : "Cited passages"}
+                  </span>
                 </div>
                 <p className="answer-text">{q.answer}</p>
                 <div className="citations">
@@ -427,7 +461,8 @@ export function Workspace({ id }: { id: string }) {
             ))}
             {asking && (
               <p className="thinking" role="status">
-                <Sparkles size={15} /> Looking through your sources…
+                <Sparkles size={15} /> Searching sources and composing an
+                answer…
               </p>
             )}
             <div ref={bottom} />
@@ -462,8 +497,8 @@ export function Workspace({ id }: { id: string }) {
               </div>
             </form>
             <p className="composer-note">
-              Local passage search · Matches source text, without AI-generated
-              answers.
+              Answers use your selected sources. Follow citations to check the
+              evidence.
             </p>
           </div>
         </section>
@@ -502,6 +537,21 @@ export function Workspace({ id }: { id: string }) {
               >
                 Open original <ExternalLink size={13} />
               </a>
+              {reader.status === "ready" && !isSourceReady(reader) && (
+                <div className="notice">
+                  <p>
+                    {reader.index_error ||
+                      "Index this source to use it in questions."}
+                  </p>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={retryIngestion}
+                  >
+                    {busy ? "Indexing…" : "Retry indexing"}
+                  </button>
+                </div>
+              )}
               {reader.status === "needs_text" ? (
                 <form onSubmit={saveTranscription}>
                   <div className="notice">
@@ -546,8 +596,8 @@ export function Workspace({ id }: { id: string }) {
               <div className="reader-tip">
                 <Sparkles size={16} />
                 <p>
-                  Try a specific question with words from your sources for the
-                  most useful matches.
+                  Ask a specific question and select the sources you want to
+                  explore.
                 </p>
               </div>
             </div>
@@ -560,7 +610,7 @@ export function Workspace({ id }: { id: string }) {
           onClose={() => setAdding(false)}
           onAdded={(source) => {
             setSources((ss) => [...ss, source]);
-            if (source.status === "ready")
+            if (isSourceReady(source))
               setSelected((ids) => [...ids, source.id]);
             else void openSource(source.id);
           }}

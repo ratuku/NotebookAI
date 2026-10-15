@@ -1,12 +1,15 @@
 # Current architecture
 
-This document describes the implemented MVP. The [original long-term plan](roadmap-architecture.md) is retained separately. The MVP uses two host processes and a PostgreSQL 18 container. It has one seeded admin user, no authentication, and no external model service.
+This document describes the implemented MVP. The [original long-term plan](roadmap-architecture.md) is retained separately. The MVP uses two host processes and a PostgreSQL 18 container. It has one seeded admin user, no authentication, and Groq for answer generation. The AI Python package runs inside FastAPI.
 
 ```mermaid
 flowchart LR
     Browser[Browser: Next.js UI on port 3000] -->|JSON and multipart HTTP| API[FastAPI MVC on port 8000]
     API --> Controllers[Controllers: notebook and source scope]
-    Controllers --> Services[Services: parsing and cited passage retrieval]
+    Controllers --> Services[Services: extraction and RAG]
+    Services --> Embed[Local FastEmbed]
+    Services --> Vector[(Qdrant local storage)]
+    Services --> Groq[Groq: gpt-oss-20b]
     Controllers --> Models[Models: SQLAlchemy entities]
     Models --> DB[(PostgreSQL 18: host port 5433)]
     Controllers --> Views[Views: Pydantic response schemas]
@@ -36,8 +39,14 @@ erDiagram
         varchar id PK
         varchar notebook_id FK
         varchar title
-        varchar kind "text, pdf, image"
+        varchar kind "text, pdf, pptx, url, image"
         varchar status "ready, needs_text"
+        varchar index_status
+        varchar index_version "content/model/chunker hash"
+        text index_error
+        int chunk_count
+        text url
+        boolean text_override
         text text
         json segments "text and original location"
         varchar media_type
@@ -51,7 +60,7 @@ erDiagram
         text answer
         json source_ids "selected source ID snapshot"
         json citations "quoted evidence snapshot"
-        varchar mode "extractive"
+        varchar mode "rag or extractive"
         timestamptz created_at
     }
 ```
@@ -75,15 +84,11 @@ The frontend communicates directly with the backend over HTTP. The browser never
 2. Add text or upload a file (10 MB limit). Parsing runs synchronously in a FastAPI worker thread. PDFs are limited to 100 pages and all extracted text to 200,000 characters.
 3. Store validated original bytes and extracted segments in the same database transaction. This avoids filesystem/database orphan handling for the small local MVP. Original file bytes are deferred by the ORM and not loaded by list queries.
 4. Select one or more ready sources. The backend rejects missing, foreign, or untranscribed sources.
-5. Tokenize the question, rank matching segments by inverse document frequency, and return up to three quoted passages. Every passage carries its source and location. If no words match, return an explicit no-match answer.
-6. Save the question, answer, source-selection snapshot, and evidence snapshots in PostgreSQL. Refreshing the UI restores history.
+5. Embed the question, retrieve scoped dense and BM25 candidates, fuse ranks, and select diverse evidence. Groq generates structured claims; validate their citation IDs against retrieved evidence before rendering numbered citations.
+6. Save the question, answer, source-selection snapshot, and evidence snapshots in PostgreSQL. Refreshing the UI restores history. History is not currently supplied as conversational context to Groq.
 
-This is lexical retrieval only: it cannot understand paraphrases, synthesize an answer, interpret images, or reliably judge whether a passage answers the question. The UI explicitly calls it “Cited passages” and describes local passage search. Add a configurable generative provider later, keeping the same source-scope and citation contracts.
+## Operational scope
 
-## Deliberate scope
+PostgreSQL is authoritative; Qdrant is a rebuildable derived index. Uploads commit source data and then index synchronously. Source versions and notebook row locks protect index publication. Failed indexing remains visible and retryable. Local Qdrant requires one backend process; a remote Qdrant URL is optional. No separate AI service or application container is needed.
 
-No application containers, authentication, AI microservice, vector database, cloud storage, background queue, URL ingestion, PPTX parsing, OCR, generated reports, or quizzes in this milestone. PDF parsing is bounded by file/page/text limits but is not sandboxed or time-limited; public deployment requires a hardened ingestion worker. File bytes in PostgreSQL and synchronous parsing suit small local notebooks; larger workloads need object storage and jobs. Lists currently load a complete notebook/library and will need pagination at larger scale.
-
-## Next: semantic retrieval
-
-See [the vector-indexing design](vector-indexing.md) for the planned `index_source(source_id)` job, source-to-vector flow, scoped question retrieval, saved chat context, and retry/version/deletion behavior. It is a design, not an implemented feature.
+No authentication, OCR, background queue, generated reports, or quizzes are implemented. Parsers have file/page/text bounds but are not isolated workers. Larger workloads need background jobs, object storage and scalable lexical indexing. See [the implemented AI pipeline](vector-indexing.md) for configuration, API and limitations.

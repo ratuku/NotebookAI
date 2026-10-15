@@ -6,12 +6,12 @@ A small NotebookLM-inspired workspace built with **Next.js**, **FastAPI**, and *
 
 - Notebook library with search, creation, renaming, and deletion.
 - Three-panel notebook workspace: sources, questions, and source reader; responsive mobile layout.
-- Pasted text, UTF-8 `.txt`, text-based PDF, and PNG/JPEG/WEBP uploads.
-- Source selection, questions with quoted passages and page/paragraph citations, and persistent question history.
+- Pasted text, UTF-8 `.txt`, PDF, PPTX, PNG/JPEG/WEBP uploads, and single-page URLs.
+- Source selection, grounded AI answers with page/slide/paragraph citations, and persistent question history.
 - Images and scanned PDFs can be uploaded and manually transcribed before asking questions.
-- One seeded `admin` user; no sign-in or external AI credentials needed.
+- One seeded `admin` user; no sign-in; Groq credentials power generated answers.
 
-**Answering is a local keyword-based passage search, not generative AI.** It returns relevant excerpts or states that it cannot find a match. Semantic retrieval, model-generated synthesis, OCR, authentication, reports, and quizzes remain future work. No paid AI calls are made.
+**RAG uses local FastEmbed embeddings, Qdrant, hybrid semantic/BM25 retrieval, reciprocal rank fusion, and diversity selection.** Groq generates cited answers with `openai/gpt-oss-20b` by default. OCR, authentication, reports, and quizzes remain future work.
 
 ## Run locally
 
@@ -32,8 +32,9 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.lock
-pip install --no-deps -e .
+pip install --no-deps -e ../ai -e .
 cp .env.example .env
+# Set GROQ_API_KEY in .env before asking AI questions.
 alembic upgrade head
 uvicorn notebook_backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
@@ -58,11 +59,11 @@ Stop the database with `docker compose stop`; its named volume keeps notebooks a
 Backend (from `backend/`, with the virtual environment active):
 
 ```sh
-ruff check .
-ruff format --check .
-pytest -q
+ruff check . ../ai
+ruff format --check . ../ai
+pytest tests ../ai/tests -q
 # PostgreSQL integration run after alembic upgrade head:
-TEST_DATABASE_URL=postgresql+psycopg://notebook:local_notebook_password@localhost:5433/notebook pytest -q
+TEST_DATABASE_URL=postgresql+psycopg://notebook:local_notebook_password@localhost:5433/notebook pytest tests ../ai/tests -q
 alembic check
 ```
 
@@ -75,7 +76,8 @@ npm run typecheck
 npm test
 npm run build
 npx playwright install chromium
-# Keep the backend running; Playwright starts the frontend when needed.
+# Run the backend with AI_MODE=extractive for credential-free browser tests.
+# Playwright starts the frontend when needed.
 npm run test:e2e
 ```
 
@@ -86,6 +88,7 @@ Browser tests run on desktop and mobile viewports against the real API. They cre
 ```text
 frontend/                 Next.js App Router, React, TypeScript
 backend/                  FastAPI MVC app, SQLAlchemy, Alembic, pytest
+ai/                       Extraction, embeddings, Qdrant, retrieval, Groq
 compose.yaml              PostgreSQL 18 only
 docs/architecture.md      Current architecture and Mermaid ER diagram
 docs/frontend.md          UI structure and frontend/backend communication
@@ -96,8 +99,8 @@ docs/progress.md          Implementation checkpoint and remaining work
 - [Current architecture and entity diagram](docs/architecture.md)
 - [Frontend guide](docs/frontend.md)
 - [Backend guide](docs/backend.md)
-- [Planned vector indexing and chat context](docs/vector-indexing.md)
+- [Implemented RAG pipeline and ingestion API](docs/vector-indexing.md)
 - [Implementation checkpoint](docs/progress.md)
 - [Original long-term architecture](docs/roadmap-architecture.md), retained as a roadmap, not a description of the MVP.
 
-The original empty `front-end/`, `back-end/`, and `ai/` folders are unused; the implementation follows the previously planned canonical `frontend/` and `backend/` names.
+The original empty `front-end/` and `back-end/` folders are unused. See [AI configuration and limitations](docs/vector-indexing.md) for operational details.

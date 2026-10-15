@@ -43,7 +43,10 @@ def db():
 
 
 @pytest.fixture()
-def client(db):
+def client(db, monkeypatch):
+    from notebook_backend.config import settings
+
+    monkeypatch.setattr(settings, "ai_mode", "extractive")
     app.dependency_overrides[get_db] = lambda: db
     with TestClient(app) as client:
         yield client

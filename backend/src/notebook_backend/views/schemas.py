@@ -32,13 +32,27 @@ class TextSourceInput(BaseModel):
     text: Content
 
 
+class URLSourceInput(BaseModel):
+    url: str = Field(min_length=1, max_length=2048)
+
+
+class ReindexInput(BaseModel):
+    force: bool = True
+    reextract: bool = True
+    notebook_id: str | None = None
+
+
 class SourceView(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     notebook_id: str
     title: str
-    kind: Literal["text", "pdf", "image"]
+    kind: Literal["text", "pdf", "pptx", "url", "image"]
     status: Literal["ready", "needs_text"]
+    index_status: str
+    index_error: str | None = None
+    chunk_count: int = 0
+    url: str | None = None
     created_at: datetime
 
 
@@ -62,6 +76,9 @@ class Citation(BaseModel):
     source_title: str
     location: str
     excerpt: str
+    chunk_id: str | None = None
+    source_version: str | None = None
+    url: str | None = None
 
 
 class QuestionView(BaseModel):

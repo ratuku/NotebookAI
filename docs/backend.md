@@ -12,7 +12,9 @@ src/notebook_backend/
   models/entities.py         User, Notebook, Source, Question
   views/schemas.py            Pydantic input/output representations
   controllers/notebooks.py   HTTP actions, admin scope, transactions
-  services/sources.py        Text/PDF/image validation and extraction
+  services/sources.py        AI package extraction adapter
+  services/ingestion.py      Index publication, retry, deletion
+  controllers/ingestion.py   Source retry and full rebuild endpoints
   services/answers.py        Scoped lexical retrieval and cited passages
 migrations/                  Alembic schema history and admin seed
 tests/                       API integration and validation tests
@@ -62,7 +64,7 @@ Example question body:
 {"question": "How does photosynthesis use sunlight?", "source_ids": ["source-uuid"]}
 ```
 
-The response contains `id`, `question`, `answer`, `source_ids`, `mode: "extractive"`, `created_at`, and citations with `source_id`, `source_title`, `location`, and `excerpt`.
+The response contains `id`, `question`, `answer`, `source_ids`, `mode: "rag"` (or explicit `extractive` mode), `created_at`, and citations with `source_id`, `source_title`, `location`, and `excerpt`.
 
 ## Ingestion and storage
 
@@ -73,14 +75,16 @@ The response contains `id`, `question`, `answer`, `source_ids`, `mode: "extracti
 
 For this local MVP, parsing runs synchronously in a worker thread. A multipart body may be spooled before the bounded application read; this is not an ingress-wide resource limit. Production requires gateway request limits, authenticated access, isolated/time-bounded parsers, and background jobs before accepting public uploads.
 
-## Answer behavior and future extension
+## Answer behavior
 
-The retrieval service removes common stop words, scores shared terms by inverse document frequency, and returns up to three verbatim segments from the selected sources. It acknowledges no lexical match rather than making up an answer. It does not do embeddings, reasoning, or conversational follow-up resolution. Citation snapshots retain the evidence even after source deletion or later transcription changes.
+In optional extractive mode, the retrieval service removes common stop words, scores shared terms by inverse document frequency, and returns up to three verbatim segments from the selected sources. It acknowledges no lexical match rather than making up an answer. It does not do embeddings, reasoning, or conversational follow-up resolution. Citation snapshots retain the evidence even after source deletion or later transcription changes.
 
-The simple retrieval function can later be replaced with a provider-backed service. Keep provider credentials server-side and preserve notebook/source filters, no-evidence behavior, and citation validation. Authentication should replace the controller’s `admin_id` lookup with a real session identity.
+RAG is now the default; the preceding lexical behavior is available only with `AI_MODE=extractive`. See [the AI guide](vector-indexing.md) for configuration, upload-time indexing, rebuild endpoints, hybrid retrieval, and citation validation. Keep provider credentials server-side and preserve notebook/source filters, no-evidence behavior, and citation validation. Authentication should replace the controller’s `admin_id` lookup with a real session identity.
 
 ## Tests
 
-`pytest -q` runs fast in-memory SQLite tests with foreign keys enabled. Setting `TEST_DATABASE_URL` runs the same API suite against PostgreSQL 18 with migrations applied. Each integration test uses an outer transaction and nested savepoints; application commits never persist test data. Tests cover notebook lifecycle, title validation, citation/history persistence, missing evidence, source selection, cross-notebook and future-user isolation, cascading deletes, file validation, PDF page references, image transcription, and CORS.
+`pytest tests ../ai/tests -q` runs fast in-memory SQLite tests with foreign keys enabled. Setting `TEST_DATABASE_URL` runs the same API suite against PostgreSQL 18 with migrations applied. Each integration test uses an outer transaction and nested savepoints; application commits never persist test data. Tests cover notebook lifecycle, title validation, citation/history persistence, missing evidence, source selection, cross-notebook and future-user isolation, cascading deletes, file validation, PDF page references, image transcription, and CORS.
 
 GitHub Actions migrates PostgreSQL 18 before testing and checks for schema drift. No provider calls or credentials are needed in CI.
+
+PPTX uploads extract slide text and tables, preserving slide locations. `POST /api/v1/notebooks/{id}/sources/url` accepts `{"url":"https://example.com/page"}` and saves a single-page snapshot. Upload, pasted text, URL, and transcription endpoints index synchronously in RAG mode. Inspect `index_status`, `index_error`, and `chunk_count` in the source response; successful source persistence does not imply successful indexing.

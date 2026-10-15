@@ -45,3 +45,7 @@ npm run test:e2e
 Vitest tests verify notebook filtering, creation/navigation, recoverable API errors, multipart headers, and empty deletion responses. Playwright runs desktop and mobile flows against the real FastAPI backend: create notebook, upload text, ask a question, read a citation, reload history, deselect sources, and delete the notebook. Keep FastAPI and PostgreSQL running before launching browser tests. Playwright starts Next.js automatically when it is not already running.
 
 The CSS uses system fonts and has no external font requests. Authentication, generative AI, source editing beyond transcription, and model/settings controls are intentionally absent.
+
+## RAG integration
+
+The add-source dialog accepts PPTX and single-page websites in addition to previous formats. Uploads display extraction/indexing progress. Only sources with extracted text and a ready vector index (or explicit extractive mode) can be selected for questions. Failed indexing is visible in the source reader with a retry action. Answers render server-supplied citations and retain the existing source navigation/history behavior. The browser never receives Groq credentials; FastAPI owns all model calls.

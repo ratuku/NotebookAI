@@ -9,8 +9,13 @@ export type Source = {
   id: string;
   notebook_id: string;
   title: string;
-  kind: "text" | "pdf" | "image";
+  kind: "text" | "pdf" | "pptx" | "url" | "image";
   status: "ready" | "needs_text";
+  index_status:
+    "pending" | "processing" | "ready" | "failed" | "needs_text" | "disabled";
+  index_error: string | null;
+  chunk_count: number;
+  url: string | null;
   created_at: string;
 };
 export type SourceDetail = Source & {
@@ -74,4 +79,11 @@ export function message(error: unknown): string {
   return error instanceof Error
     ? error.message
     : "Something went wrong. Try again.";
+}
+
+export function isSourceReady(source: Source) {
+  return (
+    source.status === "ready" &&
+    ["ready", "disabled"].includes(source.index_status)
+  );
 }

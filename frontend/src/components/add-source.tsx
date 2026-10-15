@@ -1,6 +1,6 @@
 "use client";
 import { useState, type FormEvent } from "react";
-import { Upload, FileText, Plus } from "lucide-react";
+import { Upload, FileText, Plus, Link as LinkIcon } from "lucide-react";
 import { Dialog } from "./dialog";
 import { request, notebookPath, message, type Source } from "@/lib/api";
 export function AddSource({
@@ -12,9 +12,10 @@ export function AddSource({
   onClose: () => void;
   onAdded: (source: Source) => void;
 }) {
-  const [tab, setTab] = useState<"file" | "text">("file");
+  const [tab, setTab] = useState<"file" | "text" | "url">("file");
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
+  const [url, setUrl] = useState("");
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +29,11 @@ export function AddSource({
         source = await request<Source>(
           `${notebookPath(notebookId)}/sources/text`,
           { method: "POST", body: JSON.stringify({ title, text }) },
+        );
+      else if (tab === "url")
+        source = await request<Source>(
+          `${notebookPath(notebookId)}/sources/url`,
+          { method: "POST", body: JSON.stringify({ url }) },
         );
       else {
         if (!file) throw new Error("Choose a file first.");
@@ -71,6 +77,13 @@ export function AddSource({
         >
           <FileText size={16} /> Paste text
         </button>
+        <button
+          aria-pressed={tab === "url"}
+          onClick={() => setTab("url")}
+          disabled={busy}
+        >
+          <LinkIcon size={16} /> Website
+        </button>
       </div>
       <form onSubmit={submit}>
         {tab === "file" ? (
@@ -78,11 +91,11 @@ export function AddSource({
             <label className="upload-zone">
               <Upload size={30} />
               <strong>{file ? file.name : "Choose a source file"}</strong>
-              <span>PDF, TXT, PNG, JPG, or WEBP · Up to 10 MB</span>
+              <span>PDF, PPTX, TXT, PNG, JPG, or WEBP · Up to 10 MB</span>
               <input
                 aria-label="Source file"
                 type="file"
-                accept=".pdf,.txt,.png,.jpg,.jpeg,.webp"
+                accept=".pdf,.pptx,.txt,.png,.jpg,.jpeg,.webp"
                 onChange={(e) => setFile(e.target.files?.[0] || null)}
               />
             </label>
@@ -91,6 +104,22 @@ export function AddSource({
               ask questions.
             </p>
           </>
+        ) : tab === "url" ? (
+          <label>
+            Page URL
+            <input
+              required
+              type="url"
+              maxLength={2048}
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://example.com/article"
+            />
+            <p className="hint">
+              Imports this page only. Pages requiring sign-in or JavaScript may
+              not contain readable text.
+            </p>
+          </label>
         ) : (
           <>
             <label>
@@ -125,11 +154,16 @@ export function AddSource({
         <button
           className="primary full"
           disabled={
-            busy || (tab === "file" ? !file : !title.trim() || !text.trim())
+            busy ||
+            (tab === "file"
+              ? !file
+              : tab === "url"
+                ? !url.trim()
+                : !title.trim() || !text.trim())
           }
         >
           <Plus size={17} />
-          {busy ? "Adding source…" : "Add source"}
+          {busy ? "Extracting and indexing…" : "Add source"}
         </button>
       </form>
     </Dialog>

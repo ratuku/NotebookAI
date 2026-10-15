@@ -29,3 +29,7 @@ Validation is in progress. Update this section with actual results before handof
 ## Resuming work
 
 Continue from the current files and this checkpoint. Inspect `git status`, read any new user instructions, and run only the checks needed for further changes. Completed code does not need to be regenerated. Saved progress does not guarantee an interrupted process automatically restarts after a usage reset; resume this chat to continue.
+
+## RAG milestone (supersedes earlier AI roadmap status)
+
+Implemented `ai/` package with PDF/PPTX/TXT/URL extraction, local FastEmbed, persistent Qdrant, scoped hybrid BM25/dense retrieval, RRF and diversity selection, and Groq structured grounded answers (`openai/gpt-oss-20b`). Added upload-time ingestion, full PostgreSQL rebuild and individual retry endpoints, indexing migration and UI states. See `vector-indexing.md` for setup and limitations. AI/backend tests and CI require no provider credentials. Live Groq generation needs the user's key. Background jobs, OCR, conversational context and large-scale retrieval remain future work.

@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from notebook_backend.config import settings
+from notebook_backend.controllers.ingestion import router as ingestion_router
 from notebook_backend.controllers.notebooks import router
 from notebook_backend.database import get_db
 
@@ -18,6 +19,7 @@ app.add_middleware(
     allow_headers=["Content-Type"],
 )
 app.include_router(router)
+app.include_router(ingestion_router)
 
 
 @app.get("/health")

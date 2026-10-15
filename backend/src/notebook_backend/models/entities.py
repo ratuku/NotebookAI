@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, DateTime, ForeignKey, LargeBinary, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, deferred, mapped_column, relationship
 
 from notebook_backend.database import Base
@@ -44,6 +44,12 @@ class Source(Base):
     kind: Mapped[str] = mapped_column(String(20))
     status: Mapped[str] = mapped_column(String(30), default="ready")
     text: Mapped[str] = mapped_column(Text, default="")
+    index_status: Mapped[str] = mapped_column(String(20), default="pending")
+    index_version: Mapped[str | None] = mapped_column(String(64))
+    index_error: Mapped[str | None] = mapped_column(Text)
+    chunk_count: Mapped[int] = mapped_column(Integer, default=0)
+    url: Mapped[str | None] = mapped_column(Text)
+    text_override: Mapped[bool] = mapped_column(Boolean, default=False)
     # Each segment preserves its page/paragraph location for verifiable citations.
     segments: Mapped[list] = mapped_column(JSON, default=list)
     media_type: Mapped[str | None] = mapped_column(String(100))

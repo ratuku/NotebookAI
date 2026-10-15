@@ -24,3 +24,5 @@ htmlcov/
 playwright-report/
 test-results/
 *.db
+.models/
+.qdrant/

@@ -69,7 +69,7 @@ Use separate filenames/directories per app and check command success. A clearly 
 
 After checks pass on `main`, GitHub Actions publishes both images to ECR, then invokes the existing EC2 deployment script through SSM. Infrastructure-specific setup and the server script are managed outside this repository.
 
-Configure repository variables `AWS_REGION`, `AWS_ECR_ROLE_ARN`, `ECR_NAMESPACE`, and `EC2_DEPLOY_SCRIPT`; `ECR_IMAGE_PLATFORM` defaults to `linux/amd64`. The namespace prefixes the `notebook-ai-frontend` and `notebook-ai-backend` repository names. The role must permit ECR publishing and the workflow's SSM send/list operations. Instances are selected by the tag `Role=notebookai` and must be managed by SSM.
+Configure repository variables `AWS_REGION`, `AWS_ECR_ROLE_ARN`, `ECR_NAMESPACE`, and `EC2_DEPLOY_SCRIPT`; `ECR_IMAGE_PLATFORM` defaults to `linux/amd64`. The namespace prefixes the `notebook-ai-frontend` and `notebook-ai-backend` repository names. The role must permit ECR publishing and the workflow's SSM send/list operations. Set the repository **secret** `EC2_DEPLOY_TAG_VALUE` to the exact value of the target instance’s `Role` tag (case-sensitive). The tag key remains `Role`; this value is not the instance’s IAM role name. Instances matching that tag must be managed by SSM. An empty secret fails before sending a command.
 
 The publishing job exports its release tag only after both images succeed. Deployment consumes that output, including when only failed deployment jobs are rerun. Rerunning publishing creates a new attempt-specific tag for both images, compatible with immutable repositories.
 

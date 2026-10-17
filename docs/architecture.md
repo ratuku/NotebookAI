@@ -1,6 +1,6 @@
 # Current architecture
 
-This document describes the implemented MVP. The [original long-term plan](roadmap-architecture.md) is retained separately. The MVP uses two host processes and a PostgreSQL 18 container. It has one seeded admin user, no authentication, and Groq for answer generation. The AI Python package runs inside FastAPI.
+This document describes the implemented MVP. The [original long-term plan](roadmap-architecture.md) is retained separately. Local development uses two host processes and a PostgreSQL 18 container; the deployment stack containerizes the frontend, backend and database behind an Nginx gateway. The diagram below shows local development ports. It has one seeded admin user, no authentication, and Groq for answer generation. The AI Python package runs inside FastAPI.
 
 ```mermaid
 flowchart LR

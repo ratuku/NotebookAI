@@ -13,7 +13,7 @@ cp .env.deploy.example .env.deploy
 docker compose --env-file .env.deploy -f compose.deploy.yaml up --build -d --wait
 ```
 
-Open `http://localhost:8080`. The browser uses the same origin for `/api/v1/...`; there is no localhost backend URL embedded in the deployed frontend. Only the gateway publishes a port. Backend, frontend and PostgreSQL stay on the Compose network. The frontend image uses Next.js standalone output, and application processes run as non-root users. `.dockerignore` excludes secrets, local databases/model caches and host dependencies.
+Open `http://localhost:8080` locally. On the shared EC2 server, set `APP_PORT=8081` in its environment file and point the host reverse proxy to `127.0.0.1:8081`. The browser uses the same origin for `/api/v1/...`; there is no localhost backend URL embedded in the deployed frontend. Only the gateway publishes a port. Backend, frontend and PostgreSQL stay on the Compose network. The frontend image uses Next.js standalone output, and application processes run as non-root users. `.dockerignore` excludes secrets, local databases/model caches and host dependencies.
 
 The migration service waits for PostgreSQL health, runs `alembic upgrade head`, and must succeed before the API starts. The gateway waits for healthy backend and frontend services. Restart the stack after configuration changes. Use one backend worker because embedded Qdrant permits one owning process.
 
@@ -64,3 +64,15 @@ docker compose --env-file .env.app-a -f compose.deploy.yaml exec -T postgres \
 ```
 
 Use separate filenames/directories per app and check command success. A clearly named path aids operations, but copying a live PostgreSQL directory is not by itself a consistent backup: use `pg_dump`, a PostgreSQL-aware physical backup, or stop PostgreSQL before a filesystem copy. See [PostgreSQL backup guidance](https://www.postgresql.org/docs/18/backup-file.html). Back up the full database, not individual files from `18/docker`.
+
+## Publishing releases
+
+After checks pass on `main`, GitHub Actions publishes both images to ECR, then invokes the existing EC2 deployment script through SSM. Infrastructure-specific setup and the server script are managed outside this repository.
+
+Configure repository variables `AWS_REGION`, `AWS_ECR_ROLE_ARN`, `ECR_NAMESPACE`, and `EC2_DEPLOY_SCRIPT`; `ECR_IMAGE_PLATFORM` defaults to `linux/amd64`. The namespace prefixes the `notebook-ai-frontend` and `notebook-ai-backend` repository names. The role must permit ECR publishing and the workflow's SSM send/list operations. Instances are selected by the tag `Role=notebookai` and must be managed by SSM.
+
+The publishing job exports its release tag only after both images succeed. Deployment consumes that output, including when only failed deployment jobs are rerun. Rerunning publishing creates a new attempt-specific tag for both images, compatible with immutable repositories.
+
+`EC2_DEPLOY_SCRIPT` is the executable path on EC2; it receives the image tag and AWS region as its two arguments. The server script owns ECR pulls, release configuration, migrations, startup and health checks, and must return a nonzero exit code on failure. The checked-in Compose file remains the local-build configuration.
+
+SSM allows up to five minutes for command delivery and five minutes for script execution (image download and startup combined). The workflow polls every five seconds for up to eleven minutes to include delivery and status propagation. Separate download/startup limits belong in the server script because GitHub sees one SSM command. A monitoring timeout does not prove the remote command stopped; inspect its command ID before retrying.

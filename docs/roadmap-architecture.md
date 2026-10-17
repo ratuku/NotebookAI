@@ -1,10 +1,10 @@
 # NotebookAI long-term architecture (archived planning baseline)
 
-> This is the original, unimplemented long-term plan. See [current architecture](architecture.md) for the working MVP. The current user request takes precedence: one backend, no authentication, and Docker only for PostgreSQL.
+> This is the original, unimplemented long-term plan. See [current architecture](architecture.md) for the working MVP. This document records historical assumptions, not current requirements. The implemented app uses one backend, no authentication, and supports a fully containerized deployment.
 
 ## Status and architectural decision
 
-This document describes the agreed target architecture, not an already implemented system. The repository currently contains documentation and empty `front-end/`, `back-end/`, and `ai/` directories. Implementation should adopt `frontend/` and `backend/` as the canonical names; this documentation update does not rename directories.
+This document describes the agreed target architecture, not an already implemented system. At the time this plan was written, the repository contained documentation and empty `front-end/`, `back-end/`, and `ai/` directories. Implementation should adopt `frontend/` and `backend/` as the canonical names; this documentation update does not rename directories.
 
 NotebookAI is a NotebookLM-inspired application for organizing sources into notebooks, asking grounded questions, and generating downloadable reports and quizzes. It uses a monorepo with three independently deployable components: a Next.js frontend, a FastAPI business backend, and a FastAPI AI component. A directory describes source organization; it does not need a `-service` suffix to represent a deployable service.
 

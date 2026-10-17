@@ -2,7 +2,7 @@
 
 ## Scope
 
-Build a basic Next.js + FastAPI MVC NotebookAI clone, single admin user, notebooks with multiple typed sources, PostgreSQL 18 in Docker, host-run apps, tests, Mermaid entity design, module documentation, and PR CI.
+Build a basic Next.js + FastAPI MVC NotebookAI clone, single admin user, notebooks with multiple typed sources, PostgreSQL 18, host-run development and containerized deployment, tests, Mermaid entity design, module documentation, and PR CI.
 
 ## Implemented
 
@@ -18,13 +18,14 @@ Build a basic Next.js + FastAPI MVC NotebookAI clone, single admin user, noteboo
 
 ## Validation
 
-Validation is in progress. Update this section with actual results before handoff.
+Previously completed application checks are recorded below. These are milestone results, not a claim that every subsequent workflow change has been deployed or tested against live AWS.
 
 ## Deliberate follow-ups
 
 - Screenshot references received and applied to the notebook library and workspace styling. Full Studio tools remain outside this MVP.
-- No AI provider was specified. Current answers are explicitly labeled local cited passages. Add a real provider, semantic retrieval, and OCR as a separate extension.
-- Authentication, reports/quizzes, URL/PPTX ingestion, and cloud deployment are outside this basic milestone.
+- Groq generation, semantic retrieval, reports/quizzes and URL/PPTX ingestion are implemented.
+- Authentication, OCR and durable background ingestion remain future work.
+- GitHub Actions publishes ECR images and invokes the separately managed EC2 script through SSM; live rollout verification depends on the configured AWS environment.
 
 ## Resuming work
 

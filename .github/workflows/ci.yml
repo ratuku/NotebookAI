@@ -272,3 +272,16 @@ jobs:
           done
           echo "::error::Deployment monitoring timed out. Check SSM command $CMD_ID before retrying; remote work may still be running."
           exit 1
+
+      - name: Show remote output
+        if: always() && steps.send.outputs.command_id != ''
+        env:
+          CMD_ID: ${{ steps.send.outputs.command_id }}
+        run: |
+          for ID in $(aws ssm list-command-invocations --command-id "$CMD_ID" \
+              --query 'CommandInvocations[].InstanceId' --output text); do
+            echo "== $ID"
+            aws ssm get-command-invocation --command-id "$CMD_ID" --instance-id "$ID" \
+              --query '{Status:Status,Code:ResponseCode,Out:StandardOutputContent,Err:StandardErrorContent}' \
+              --output yaml
+          done

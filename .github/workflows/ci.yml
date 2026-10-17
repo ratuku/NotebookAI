@@ -211,7 +211,7 @@ jobs:
       AWS_ROLE_ARN: ${{ vars.AWS_ECR_ROLE_ARN }}
       IMAGE_TAG: ${{ needs.publish-ecr.outputs.image_tag }}
       EC2_DEPLOY_SCRIPT: ${{ vars.EC2_DEPLOY_SCRIPT }}
-      EC2_DEPLOY_TAG_VALUE: ${{ secrets.EC2_DEPLOY_TAG_VALUE }}
+      EC2_DEPLOY_TAG_VALUE: ${{ vars.EC2_DEPLOY_TAG_VALUE }}
     steps:
       - name: Get temporary AWS credentials
         uses: aws-actions/configure-aws-credentials@v6.3.0
@@ -236,16 +236,6 @@ jobs:
             --max-concurrency 1 --max-errors 0 \
             --query "Command.CommandId" --output text)
           echo "command_id=$CMD_ID" >> "$GITHUB_OUTPUT"
-
-      - name: Show deploy target
-        env:
-          CMD_ID: ${{ steps.send.outputs.command_id }}
-        run: |
-          echo "Targeting EC2 tag key: Role"
-          sleep 5
-          aws ssm list-command-invocations --command-id "$CMD_ID" \
-            --query 'CommandInvocations[].{Instance:InstanceId,Name:InstanceName,Status:Status}' \
-            --output table
 
       - name: Wait for result
         env:

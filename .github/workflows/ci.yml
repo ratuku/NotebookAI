@@ -7,7 +7,7 @@ permissions:
   contents: read
 concurrency:
   group: checks-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -109,3 +109,161 @@ jobs:
       - name: Stop containers
         if: always()
         run: docker compose -f compose.deploy.yaml down
+  publish-ecr:
+    name: Publish application images to ECR
+    needs: [test, containers]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image_tag: ${{ steps.release.outputs.image_tag }}
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ECR_ROLE_ARN }}
+      IMAGE_PLATFORM: ${{ vars.ECR_IMAGE_PLATFORM || 'linux/amd64' }}
+      # Unique even on retries, so immutable ECR repositories accept reruns.
+      IMAGE_TAG: sha-${{ github.sha }}-run-${{ github.run_id }}-${{ github.run_attempt }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate publishing configuration
+        shell: bash
+        run: |
+          if [[ ! "$AWS_ROLE_ARN" =~ ^arn:aws:iam::[0-9]{12}:role/.+ ]]; then
+            echo '::error::Set the AWS_ECR_ROLE_ARN repository variable.'
+            exit 1
+          fi
+          case "$IMAGE_PLATFORM" in
+            linux/amd64|linux/arm64) ;;
+            *) echo '::error::ECR_IMAGE_PLATFORM must be linux/amd64 or linux/arm64'; exit 1 ;;
+          esac
+      - name: Get temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-ecr-${{ github.run_id }}
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      - name: Verify repositories exist
+        env:
+          ECR_NAMESPACE: ${{ vars.ECR_NAMESPACE }}
+        run: |
+          aws ecr describe-repositories --repository-names "$ECR_NAMESPACE/notebook-ai-frontend" "$ECR_NAMESPACE/notebook-ai-backend" --region "$AWS_REGION" > /dev/null
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Build and push frontend
+        id: frontend
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: frontend/Dockerfile
+          platforms: ${{ env.IMAGE_PLATFORM }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_NAMESPACE }}/notebook-ai-frontend:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=ecr-frontend-${{ env.IMAGE_PLATFORM }}
+          cache-to: type=gha,mode=max,scope=ecr-frontend-${{ env.IMAGE_PLATFORM }}
+      - name: Build and push backend
+        id: backend
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: backend/Dockerfile
+          platforms: ${{ env.IMAGE_PLATFORM }}
+          push: true
+          tags: ${{ steps.ecr.outputs.registry }}/${{ vars.ECR_NAMESPACE }}/notebook-ai-backend:${{ env.IMAGE_TAG }}
+          cache-from: type=gha,scope=ecr-backend-${{ env.IMAGE_PLATFORM }}
+          cache-to: type=gha,mode=max,scope=ecr-backend-${{ env.IMAGE_PLATFORM }}
+      # Publish the shared tag only after BOTH images have been pushed.
+      # A deployment-only retry reuses this successful job's output.
+      - name: Record published release
+        id: release
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          ECR_NAMESPACE: ${{ vars.ECR_NAMESPACE }}
+          FRONTEND_DIGEST: ${{ steps.frontend.outputs.digest }}
+          BACKEND_DIGEST: ${{ steps.backend.outputs.digest }}
+        run: |
+          echo "image_tag=$IMAGE_TAG" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Published release: $IMAGE_TAG"
+            echo "Frontend: $REGISTRY/$ECR_NAMESPACE/notebook-ai-frontend@$FRONTEND_DIGEST"
+            echo "Backend: $REGISTRY/$ECR_NAMESPACE/notebook-ai-backend@$BACKEND_DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    name: Deploy to EC2
+    needs: [ publish-ecr ]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_ECR_ROLE_ARN }}
+      IMAGE_TAG: ${{ needs.publish-ecr.outputs.image_tag }}
+      EC2_DEPLOY_SCRIPT: ${{ vars.EC2_DEPLOY_SCRIPT }}
+    steps:
+      - name: Get temporary AWS credentials
+        uses: aws-actions/configure-aws-credentials@v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: github-deploy-${{ github.run_id }}
+
+      - name: Send deploy command via SSM
+        id: send
+        run: |
+          CMD_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=tag:Role,Values=notebookai" \
+            --parameters "$(jq -cn --arg command "$EC2_DEPLOY_SCRIPT $IMAGE_TAG $AWS_REGION" '{commands: [$command], executionTimeout: ["300"]}')" \
+            --comment "Deploy $IMAGE_TAG" \
+            --timeout-seconds 300 \
+            --max-concurrency 1 --max-errors 0 \
+            --query "Command.CommandId" --output text)
+          echo "command_id=$CMD_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for result
+        env:
+          CMD_ID: ${{ steps.send.outputs.command_id }}
+        run: |
+          # Poll the aggregate command so delayed invocation discovery and all
+          # targeted instances are included. Allow delivery plus execution time.
+          DEADLINE=$((SECONDS + 660))
+          while (( SECONDS < DEADLINE )); do
+            RESULT=$(aws ssm list-commands --command-id "$CMD_ID" --output json)
+            STATUS=$(jq -r '.Commands[0].Status // "Pending"' <<< "$RESULT")
+            TARGETS=$(jq -r '.Commands[0].TargetCount // 0' <<< "$RESULT")
+            case "$STATUS" in
+              Success)
+                if (( TARGETS > 0 )); then
+                  INVOCATIONS=$(aws ssm list-command-invocations --command-id "$CMD_ID" --output json)
+                  if jq -e --argjson count "$TARGETS" '.CommandInvocations | length == $count and all(.[]; .Status == "Success")' <<< "$INVOCATIONS" > /dev/null; then
+                    echo "Deployment succeeded on $TARGETS instance(s)."
+                    exit 0
+                  fi
+                  sleep 5
+                  continue
+                fi
+                echo '::error::No instances matched the deployment tag.'
+                exit 1
+                ;;
+              Failed|Cancelled|TimedOut)
+                aws ssm list-command-invocations --command-id "$CMD_ID" --details --output json
+                echo "::error::Deployment ended with status $STATUS."
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "::error::Deployment monitoring timed out. Check SSM command $CMD_ID before retrying; remote work may still be running."
+          exit 1

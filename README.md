@@ -21,7 +21,7 @@ See [deployment setup](docs/deployment.md). Copy `.env.deploy.example` to `.env.
 docker compose --env-file .env.deploy -f compose.deploy.yaml up --build -d --wait
 ```
 
-Open `http://localhost:8080`. Public hosting requires HTTPS and access control for the shared admin workspace.
+Open `http://localhost:8080` locally. On the shared EC2 server, set `APP_PORT=8081` in the server environment file to avoid the existing application. Public hosting requires HTTPS and access control for the shared admin workspace.
 
 ## Run locally
 
